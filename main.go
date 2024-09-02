@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"io"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -134,6 +136,34 @@ func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {
 	return true
 }
 
+func printReport(pages map[string]int, baseURL string) {
+	line := "============================="
+	fmt.Printf("%s\n  REPORT for %s\n%s\n", line, baseURL, line)
+
+	type crawlResult struct {
+		url   string
+		count int
+	}
+
+	results := make([]crawlResult, 0, len(pages))
+	for url, count := range pages {
+		results = append(results, crawlResult{url: url, count: count})
+	}
+
+	slices.SortFunc(results, func(a, b crawlResult) int {
+		countCmp := cmp.Compare(b.count, a.count)
+		if countCmp != 0 {
+			return countCmp
+		}
+
+		return cmp.Compare(a.url, b.url)
+	})
+
+	for _, result := range results {
+		fmt.Printf("Found %d internal links to %s\n", result.count, result.url)
+	}
+}
+
 func main() {
 	args := os.Args[1:]
 	if len(args) == 0 {
@@ -173,9 +203,5 @@ func main() {
 
 	cfg.wg.Wait()
 
-	for page, count := range cfg.pages {
-		fmt.Printf("Page %s appeared %d times\n", page, count)
-	}
-	// log.Printf("pages: %#+v\n", cfg.pages)
-	// log.Printf("page count: %d\n", len(cfg.pages))
+	printReport(cfg.pages, cfg.baseUrl.String())
 }
