@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/url"
 	"strings"
 
@@ -39,7 +40,12 @@ func getURLsFromHTML(htmlBody, rawBaseURL string) ([]string, error) {
 			return
 		}
 
-		urls = append(urls, rawBaseURL+u.String())
+		fullPath, err := url.JoinPath(rawBaseURL, u.String())
+		if err != nil {
+			log.Println("Invalid url:", u, err)
+		}
+
+		urls = append(urls, fullPath)
 	}
 
 	var walkNodeLevel func(*html.Node)

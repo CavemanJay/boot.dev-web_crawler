@@ -4,23 +4,26 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
-	"time"
 )
 
 type config struct {
-	pages              map[string]int
+	maxPages           int
 	baseUrl            *url.URL
-	mu                 *sync.Mutex
 	concurrencyControl chan struct{}
 	wg                 *sync.WaitGroup
+
+	mu    *sync.RWMutex
+	pages map[string]int
 }
 
-func newConfig(baseUrl string, concurrency int) *config {
+func newConfig(baseUrl string, concurrency int, maxPages int) *config {
 	u, err := url.Parse(baseUrl)
 	if err != nil {
 		log.Fatal(err)
@@ -28,8 +31,9 @@ func newConfig(baseUrl string, concurrency int) *config {
 	cfg := &config{
 		baseUrl:            u,
 		pages:              make(map[string]int),
+		maxPages:           maxPages,
 		concurrencyControl: make(chan struct{}, concurrency),
-		mu:                 &sync.Mutex{},
+		mu:                 &sync.RWMutex{},
 		wg:                 &sync.WaitGroup{},
 	}
 	cfg.wg.Add(1)
@@ -68,6 +72,12 @@ func (cfg *config) crawlPage(rawCurrentURL string) {
 		<-cfg.concurrencyControl
 	}()
 
+	cfg.mu.RLock()
+	if len(cfg.pages) >= cfg.maxPages {
+		return
+	}
+	cfg.mu.RUnlock()
+
 	current, err := url.Parse(rawCurrentURL)
 	if err != nil {
 		fmt.Println("Invalid current url:", rawCurrentURL, err)
@@ -89,7 +99,7 @@ func (cfg *config) crawlPage(rawCurrentURL string) {
 		return
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	// time.Sleep(500 * time.Millisecond)
 
 	fmt.Println("Checking:", rawCurrentURL)
 	content, err := getHTML(rawCurrentURL)
@@ -125,23 +135,47 @@ func (cfg *config) addPageVisit(normalizedURL string) (isFirst bool) {
 }
 
 func main() {
-	args := os.Args
-	if len(args) < 2 {
+	args := os.Args[1:]
+	if len(args) == 0 {
 		fmt.Println("no website provided")
 		os.Exit(1)
 	}
 
-	if len(args) > 2 {
+	if len(args) > 3 {
 		fmt.Println("too many arguments provided")
 		os.Exit(1)
 	}
 
-	baseUrl := args[1]
+	var (
+		concurrency = 2
+		maxPages    = math.MaxInt
+	)
+	if len(args) > 1 {
+		c, err := strconv.Atoi(args[1])
+		if err != nil {
+			log.Fatal(err)
+		}
+		concurrency = c
+	}
+	if len(args) > 2 {
+		c, err := strconv.Atoi(args[2])
+		if err != nil {
+			log.Fatal(err)
+		}
+		maxPages = c
+	}
+
+	baseUrl := args[0]
 	fmt.Println("starting crawl of:", baseUrl)
 
-	cfg := newConfig(baseUrl, 3)
+	cfg := newConfig(baseUrl, concurrency, maxPages)
 	cfg.crawlPage(baseUrl)
 
 	cfg.wg.Wait()
-	log.Printf("pages: %#+v\n", cfg.pages)
+
+	for page, count := range cfg.pages {
+		fmt.Printf("Page %s appeared %d times\n", page, count)
+	}
+	// log.Printf("pages: %#+v\n", cfg.pages)
+	// log.Printf("page count: %d\n", len(cfg.pages))
 }
