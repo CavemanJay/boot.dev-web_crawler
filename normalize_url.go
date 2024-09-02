@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -58,6 +57,6 @@ func getURLsFromHTML(htmlBody, rawBaseURL string) ([]string, error) {
 		}
 	}
 	walkNodeLevel(doc)
-	fmt.Println(urls)
+	// fmt.Println(urls)
 	return urls, nil
 }
